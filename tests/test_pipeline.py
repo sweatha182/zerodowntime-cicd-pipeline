@@ -50,3 +50,17 @@ def test_blue_green_keeps_blue_when_green_is_unhealthy():
     assert result["traffic_switched"] is False
     assert result["rollback_required"] is True
 
+from canary_deployment import evaluate_canary
+
+
+def test_canary_continues_when_error_rate_is_low():
+    result = evaluate_canary(0.01)
+    assert result["decision"] == "continue"
+    assert result["traffic_percent"] == 10
+
+
+def test_canary_rolls_back_when_error_rate_is_high():
+    result = evaluate_canary(0.05)
+    assert result["decision"] == "rollback"
+    assert result["traffic_percent"] == 0
+
