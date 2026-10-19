@@ -19,3 +19,17 @@ def test_health_check_returns_healthy():
     result = check_health()
     assert result["status"] == "healthy"
     assert result["service"] == "NovaPay"
+
+from deployment import verify_deployment
+
+
+def test_healthy_deployment_does_not_require_rollback():
+    result = verify_deployment("healthy")
+    assert result["deployment"] == "successful"
+    assert result["rollback_required"] is False
+
+
+def test_unhealthy_deployment_requires_rollback():
+    result = verify_deployment("unhealthy")
+    assert result["deployment"] == "failed"
+    assert result["rollback_required"] is True
