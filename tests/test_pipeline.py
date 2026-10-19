@@ -80,6 +80,26 @@ def test_contract_is_allowed_after_old_schema_support_ends():
     assert result["safe_to_continue"] is True
 
 
+from compliance_gate import evaluate_compliance
+
+
+def test_compliance_gate_approves_when_all_checks_pass():
+    result = evaluate_compliance(True, True, True, True)
+    assert result["release_approved"] is True
+    assert result["failed_checks"] == []
+
+
+def test_compliance_gate_blocks_failed_security_scan():
+    result = evaluate_compliance(True, False, True, True)
+    assert result["release_approved"] is False
+    assert "dependency_scan" in result["failed_checks"]
+
+
+def test_compliance_gate_requires_independent_approval():
+    result = evaluate_compliance(True, True, False, True)
+    assert result["release_approved"] is False
+    assert "independent_approval" in result["failed_checks"]
+
 def test_canary_rolls_back_when_error_rate_is_high():
     result = evaluate_canary(0.05)
     assert result["decision"] == "rollback"
