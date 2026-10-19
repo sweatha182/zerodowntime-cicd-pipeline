@@ -37,6 +37,11 @@ jobs:
         run: |
           python -m pip install bandit
           bandit -r app.py deployment.py deployment_strategy.py canary_deployment.py database_migration.py compliance_gate.py -ll
+      
+      - name: Python Dependency Vulnerability Scan
+        run: |
+          python -m pip install pip-audit
+          pip-audit -r requirements.txt
 
       - name: Gitleaks Secret Scan
         uses: gitleaks/gitleaks-action@v2
