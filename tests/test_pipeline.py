@@ -58,6 +58,27 @@ def test_canary_continues_when_error_rate_is_low():
     assert result["decision"] == "continue"
     assert result["traffic_percent"] == 10
 
+from database_migration import migration_plan
+
+
+def test_expand_keeps_old_schema_supported():
+    result = migration_plan(True, True)
+    assert result["phase"] == "expand"
+    assert result["action"] == "add_new_schema_keep_old"
+    assert result["safe_to_continue"] is True
+
+
+def test_invalid_new_schema_stops_migration():
+    result = migration_plan(True, False)
+    assert result["safe_to_continue"] is False
+    assert result["action"] == "stop"
+
+
+def test_contract_is_allowed_after_old_schema_support_ends():
+    result = migration_plan(False, True)
+    assert result["phase"] == "contract"
+    assert result["safe_to_continue"] is True
+
 
 def test_canary_rolls_back_when_error_rate_is_high():
     result = evaluate_canary(0.05)
