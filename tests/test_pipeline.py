@@ -33,3 +33,20 @@ def test_unhealthy_deployment_requires_rollback():
     result = verify_deployment("unhealthy")
     assert result["deployment"] == "failed"
     assert result["rollback_required"] is True
+
+from deployment_strategy import choose_deployment
+
+
+def test_blue_green_switches_when_green_is_healthy():
+    result = choose_deployment("blue", "green", True)
+    assert result["active_version"] == "green"
+    assert result["traffic_switched"] is True
+    assert result["rollback_required"] is False
+
+
+def test_blue_green_keeps_blue_when_green_is_unhealthy():
+    result = choose_deployment("blue", "green", False)
+    assert result["active_version"] == "blue"
+    assert result["traffic_switched"] is False
+    assert result["rollback_required"] is True
+
