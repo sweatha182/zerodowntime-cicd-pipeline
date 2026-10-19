@@ -56,3 +56,33 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
+      
+      - name: Start Application for DAST
+        run: |
+          python app.py > app.log 2>&1 &
+          for i in {1..15}; do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              echo "Application is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat app.log
+          exit 1
+
+      - name: OWASP ZAP Baseline Security Scan
+        run: |
+          docker run --rm --network host \
+            -v "$PWD:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://127.0.0.1:8000/health \
+            -r /zap/wrk/zap-report.html
+
+      - name: Upload DAST Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-security-report
+          path: zap-report.html
+          if-no-files-found: ignore
