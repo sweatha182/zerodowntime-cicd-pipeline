@@ -114,19 +114,24 @@ jobs:
       - name: OWASP ZAP Baseline Scan
         continue-on-error: true
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/zap-output"
+          chmod 777 "$GITHUB_WORKSPACE/zap-output"
+
           docker pull ghcr.io/zaproxy/zaproxy:stable
 
           docker run --rm \
             --network host \
-            --user "$(id -u):$(id -g)" \
             -v "$GITHUB_WORKSPACE/zap-output:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://127.0.0.1:8000/health \
             -m 1 \
             -I \
-            -r zap-report.html \
-            -J zap-report.json
+            -r /zap/wrk/zap-report.html \
+            -J /zap/wrk/zap-report.json
+
+          echo "Checking ZAP reports..."
+          ls -lah "$GITHUB_WORKSPACE/zap-output"
 
       - name: Upload Security Reports
         if: always()
