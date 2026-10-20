@@ -72,7 +72,7 @@ jobs:
 
       - name: OWASP ZAP Baseline Security Scan
         run: |
-          docker run --rm --network host \
+            docker run --rm --user root --network host \
             -v "$PWD:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
@@ -86,3 +86,4 @@ jobs:
           name: zap-security-report
           path: zap-report.html
           if-no-files-found: ignore
+   
