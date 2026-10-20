@@ -29,3 +29,17 @@ jobs:
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
           python -m pytest -v tests/
+
+  secret-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
