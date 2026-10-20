@@ -19,129 +19,272 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Check README
-        run: test -s README.md
-
+      # 2. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
+      # 3. Check project files
+      - name: Check Project Files
+        run: |
+          echo "Checking project files..."
+
+          test -s README.md || {
+            echo "ERROR: README.md missing or empty"
+            exit 1
+          }
+
+          if [ -f requirements.txt ]; then
+            echo "requirements.txt found"
+          else
+            echo "WARNING: requirements.txt not found"
+          fi
+
+          if [ -f app.py ]; then
+            echo "Application file: app.py"
+          elif [ -f main.py ]; then
+            echo "Application file: main.py"
+          else
+            echo "ERROR: app.py or main.py not found"
+            exit 1
+          fi
+
+      # 4. Install dependencies
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
+
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          pip install bandit pip-audit pytest
 
-      - name: Run Tests
+          pip install pytest bandit pip-audit
+
+      # 5. Run unit tests
+      - name: Run Unit Tests
         run: |
           if [ -d tests ]; then
-            python -m pytest tests -v
-          elif [ -f test_app.py ]; then
-            python -m pytest test_app.py -v
+            pytest -v tests/
           else
-            echo "No test files found. Skipping tests."
+            echo "No tests directory found."
+            echo "Skipping pytest."
           fi
 
+      # 6. Bandit security scan
       - name: Bandit Security Scan
         continue-on-error: true
         run: |
           bandit -r . \
-            --exclude ./.git,./.venv,./venv,./zap-output \
+            -x ./tests,./.git,./zap-output \
             -f txt \
-            -o bandit-report.txt
+            -o bandit-report.txt || true
 
-      - name: Dependency Audit
-        continue-on-error: true
-        run: |
-          if [ -f requirements.txt ]; then
-            pip-audit -r requirements.txt \
-              --format columns \
-              --output pip-audit-report.txt
-          else
-            echo "No requirements.txt found."
+          echo "Bandit scan completed."
+
+          if [ -f bandit-report.txt ]; then
+            cat bandit-report.txt
           fi
 
-      - name: Gitleaks Scan
+      # 7. Python dependency audit
+      - name: pip-audit Dependency Scan
+        continue-on-error: true
+        run: |
+          pip-audit \
+            -f json \
+            -o pip-audit-report.json || true
+
+          pip-audit \
+            -f columns \
+            > pip-audit-report.txt 2>&1 || true
+
+          echo "Dependency scan completed."
+
+      # 8. Gitleaks secret scan
+      - name: Gitleaks Secret Scan
         uses: gitleaks/gitleaks-action@v2
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 9. Trivy filesystem scan
       - name: Trivy Filesystem Scan
-        uses: aquasecurity/trivy-action@master
         continue-on-error: true
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: .
           format: table
           exit-code: "0"
+          ignore-unfixed: true
           severity: HIGH,CRITICAL
 
+      # 10. Start application
       - name: Start Application
         run: |
           if [ -f app.py ]; then
-            nohup python app.py > app.log 2>&1 &
-          elif [ -f main.py ]; then
-            nohup python main.py > app.log 2>&1 &
+            APP_FILE="app.py"
           else
-            echo "ERROR: app.py or main.py was not found."
+            APP_FILE="main.py"
+          fi
+
+          nohup python "$APP_FILE" > app.log 2>&1 &
+          echo $! > app.pid
+
+          echo "Application process started."
+          sleep 5
+
+          if ! kill -0 "$(cat app.pid)" 2>/dev/null; then
+            echo "ERROR: Application process stopped."
+            cat app.log
             exit 1
           fi
 
-      - name: Wait for Application
+          echo "Application process is running."
+
+      # 11. Wait for health endpoint
+      - name: Application Health Check
         run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/health -o /dev/null; then
-              echo "Application is running."
+          echo "Waiting for application health endpoint..."
+
+          for i in $(seq 1 20); do
+            if curl --silent --show-error \
+              --fail \
+              http://127.0.0.1:8000/health \
+              -o health-response.txt; then
+
+              echo "Health endpoint is accessible."
+              cat health-response.txt
               exit 0
             fi
+
+            echo "Attempt $i: application not ready yet."
             sleep 2
           done
 
-          echo "Application health check failed."
-          cat app.log
+          echo "ERROR: Health endpoint did not respond successfully."
+          echo "Application log:"
+          cat app.log || true
           exit 1
 
-      - name: Prepare ZAP Output
-        run: mkdir -p "$GITHUB_WORKSPACE/zap-output"
-
-      - name: OWASP ZAP Baseline Scan
-        continue-on-error: true
+      # 12. Prepare ZAP output directory
+      - name: Prepare ZAP Report Directory
+        if: always()
         run: |
           mkdir -p "$GITHUB_WORKSPACE/zap-output"
           chmod 777 "$GITHUB_WORKSPACE/zap-output"
 
+          echo "ZAP output directory:"
+          ls -ld "$GITHUB_WORKSPACE/zap-output"
+
+      # 13. OWASP ZAP baseline scan
+      - name: OWASP ZAP Baseline Scan
+        continue-on-error: true
+        run: |
+          set +e
+
+          TARGET_URL="http://127.0.0.1:8000/health"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/zap-output"
+
+          echo "Target URL: $TARGET_URL"
+          echo "Output directory: $OUTPUT_DIR"
+
           docker pull ghcr.io/zaproxy/zaproxy:stable
+
+          PULL_STATUS=$?
+
+          if [ "$PULL_STATUS" -ne 0 ]; then
+            echo "ERROR: Unable to pull OWASP ZAP image."
+            exit 0
+          fi
 
           docker run --rm \
             --network host \
-            -v "$GITHUB_WORKSPACE/zap-output:/zap/wrk:rw" \
+            -v "$OUTPUT_DIR:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-            -t http://127.0.0.1:8000/health \
+            -t "$TARGET_URL" \
             -m 1 \
             -I \
-            -r /zap/wrk/zap-report.html \
-            -J /zap/wrk/zap-report.json
+            -r zap-report.html \
+            -J zap-report.json
 
-          echo "Checking ZAP reports..."
-          ls -lah "$GITHUB_WORKSPACE/zap-output"
+          ZAP_STATUS=$?
 
+          echo "ZAP exit code: $ZAP_STATUS"
+          echo "Checking generated reports..."
+
+          ls -lah "$OUTPUT_DIR" || true
+
+          if [ -s "$OUTPUT_DIR/zap-report.html" ]; then
+            echo "SUCCESS: ZAP HTML report generated."
+          else
+            echo "WARNING: ZAP HTML report missing or empty."
+          fi
+
+          if [ -s "$OUTPUT_DIR/zap-report.json" ]; then
+            echo "SUCCESS: ZAP JSON report generated."
+          else
+            echo "WARNING: ZAP JSON report missing or empty."
+          fi
+
+          exit 0
+
+      # 14. Verify reports
+      - name: Verify Security Reports
+        if: always()
+        run: |
+          echo "Checking security report files..."
+
+          find "$GITHUB_WORKSPACE/zap-output" \
+            -maxdepth 2 \
+            -type f \
+            -printf '%p (%s bytes)\n' || true
+
+          if [ -s zap-output/zap-report.html ]; then
+            echo "HTML report exists."
+          else
+            echo "HTML report was not generated."
+          fi
+
+          if [ -s zap-output/zap-report.json ]; then
+            echo "JSON report exists."
+          else
+            echo "JSON report was not generated."
+          fi
+
+      # 15. Upload security reports
       - name: Upload Security Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-scan-reports
           path: |
-            zap-output/zap-report.html
-            zap-output/zap-report.json
+            zap-output/
             bandit-report.txt
             pip-audit-report.txt
+            pip-audit-report.json
             app.log
+            health-response.txt
           if-no-files-found: warn
+          retention-days: 14
+
+      # 16. Stop application
+      - name: Stop Application
+        if: always()
+        run: |
+          if [ -f app.pid ]; then
+            APP_PID="$(cat app.pid)"
+
+            if kill -0 "$APP_PID" 2>/dev/null; then
+              kill "$APP_PID" || true
+              echo "Application stopped."
+            else
+              echo "Application process already stopped."
+            fi
+          fi
