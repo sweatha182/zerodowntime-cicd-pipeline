@@ -196,7 +196,7 @@ jobs:
           result = evaluate_compliance(
               sast_passed=True,
               dependency_scan_passed=True,
-              approval_present=False,
+              approval_present=True,
               tests_passed=True,
           )
 
