@@ -69,4 +69,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t zerodowntime-app:${{ github.sha }} 
+       docker build -t zerodowntime-app:${{ github.sha }} .
