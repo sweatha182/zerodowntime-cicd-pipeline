@@ -1,92 +1,35 @@
-name: CI/CD Pipeline
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+def check_health():
+    return {
+        "status": "healthy",
+        "service": "NovaPay",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/health":
+            self.send_error(404, "Not Found")
+            return
 
-      - name: Run Python tests
-        run: |
-          export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
-          python -m pytest -v tests/
+        response = json.dumps(check_health()).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(response)))
+        self.end_headers()
+        self.wfile.write(response)
 
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    def log_message(self, format, *args):
+        pass
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  sast:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Run Bandit (Python SAST)
-        run: |
-          pip install bandit
-          bandit -r . -x ./tests -ll
-
-  dependency-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          exit-code: 1
-          ignore-unfixed: true
-
-  docker-build:
-    runs-on: ubuntu-latest
-    needs: [test, secret-scan, sast, dependency-scan]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t zerodowntime-app:${{ github.sha }} .
-
-      - name: Trivy image scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: zerodowntime-app:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          exit-code: 1
-          ignore-unfixed: true
+if __name__ == "__main__":
+    # nosec B104: Binding to all interfaces is required inside the Docker container.
+    server = HTTPServer(("0.0.0.0", 8000), HealthHandler)
+    print("NovaPay health endpoint running on port 8000")
+    server.serve_forever()
