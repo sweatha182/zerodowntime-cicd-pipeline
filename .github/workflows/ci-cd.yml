@@ -1,35 +1,114 @@
 
-from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
+name: CI/CD Pipeline
 
-def check_health():
-    return {
-        "status": "healthy",
-        "service": "NovaPay",
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-    }
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
+permissions:
+  contents: read
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path != "/health":
-            self.send_error(404, "Not Found")
-            return
+jobs:
+  test:
+    name: Run Python Tests
+    runs-on: ubuntu-latest
 
-        response = json.dumps(check_health()).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(response)))
-        self.end_headers()
-        self.wfile.write(response)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    def log_message(self, format, *args):
-        pass
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install pytest
 
-if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", 8000), HealthHandler)  # nosec B104
-    print("NovaPay health endpoint running on port 8000")
-    server.serve_forever()
+      - name: Run Python tests
+        run: python -m pytest -v tests/
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Bandit
+        run: python -m pip install bandit
+
+      - name: Run Bandit
+        run: bandit -r . -x ./tests -ll
+
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+  docker-build:
+    name: Build and Scan Docker Image
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - secret-scan
+      - sast
+      - dependency-scan
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t zerodowntime-app:${{ github.sha }} .
+
+      - name: Scan Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: zerodowntime-app:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
 
