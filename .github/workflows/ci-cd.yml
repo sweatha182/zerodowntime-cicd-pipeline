@@ -81,7 +81,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Trivy Filesystem Scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: fs
           scan-ref: .
@@ -102,7 +102,7 @@ jobs:
         run: docker build -t zerodowntime-cicd:${{ github.sha }} .
 
       - name: Scan Docker Image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: uses: aquasecurity/trivy-action@0.34.0
         with:
           image-ref: zerodowntime-cicd:${{ github.sha }}
           format: table
