@@ -26,6 +26,18 @@ def test_canary_failure_blocks_release():
 def test_migration_stops_when_new_schema_is_invalid():
     result = migration_plan(True, False)
     assert result["safe_to_continue"] is False
+def test_compliance_blocks_release_when_automated_tests_fail():
+result = evaluate_compliance(
+True,   # SAST passed
+True,   # Dependency scan passed
+True,   # Independent approval
+False,  # Automated tests failed
+)
+
+
+assert result["release_approved"] is False
+assert "automated_tests" in result["failed_checks"]
+
 
 
 def test_blue_green_keeps_old_version_on_failure():
