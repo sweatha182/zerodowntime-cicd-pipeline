@@ -142,18 +142,24 @@ jobs:
         run: |
           READY=0
           for i in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8000/ > /dev/null; then
-              echo "Application is ready."
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/ || true)
+            echo "Attempt $i: HTTP $CODE"
+            if [ "$CODE" != "000" ]; then
+              echo "Application is responding."
               READY=1
               break
             fi
             sleep 2
           done
           if [ "$READY" -ne 1 ]; then
-            echo "Application did not become ready on port 8000."
+            echo "Application did not respond on port 8000."
             cat app.log
             exit 1
           fi
+          echo "--- / response ---"
+          curl -i http://127.0.0.1:8000/ || true
+          echo "--- /health response ---"
+          curl -i http://127.0.0.1:8000/health || true
 
       - name: Run OWASP ZAP Baseline Scan
         run: |
