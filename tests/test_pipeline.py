@@ -100,18 +100,26 @@ from database_migration import migration_plan
 
 def test_migration_expands_when_new_schema_is_valid():
 result = migration_plan(True, True)
+
+
 assert result["phase"] == "expand"
 assert result["action"] == "add_new_schema_keep_old"
 assert result["safe_to_continue"] is True
 
+
 def test_migration_contracts_when_old_schema_is_unsupported():
 result = migration_plan(False, True)
+
+
 assert result["phase"] == "contract"
 assert result["action"] == "remove_old_schema"
 assert result["safe_to_continue"] is True
 
+
 def test_migration_stops_when_new_schema_is_invalid():
 result = migration_plan(True, False)
+
+
 assert result["phase"] == "expand"
 assert result["action"] == "stop"
 assert result["safe_to_continue"] is False
