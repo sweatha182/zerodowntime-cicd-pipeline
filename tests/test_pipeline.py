@@ -33,3 +33,40 @@ def test_blue_green_rejects_invalid_health_value():
     with pytest.raises(TypeError):
         choose_deployment("blue", "green", "healthy")
 
+from canary_deployment import evaluate_canary
+
+
+def test_canary_continues_when_error_rate_is_below_threshold():
+    result = evaluate_canary(0.01)
+
+    assert result["decision"] == "continue"
+    assert result["traffic_percent"] == 10
+
+
+def test_canary_rolls_back_when_error_rate_exceeds_threshold():
+    result = evaluate_canary(0.05)
+
+    assert result["decision"] == "rollback"
+    assert result["traffic_percent"] == 0
+
+
+def test_canary_accepts_error_rate_at_threshold():
+    result = evaluate_canary(0.02)
+
+    assert result["decision"] == "continue"
+    assert result["traffic_percent"] == 10
+
+
+def test_canary_rejects_negative_error_rate():
+    import pytest
+
+    with pytest.raises(ValueError):
+        evaluate_canary(-0.01)
+
+
+def test_canary_rejects_error_rate_above_one():
+    import pytest
+
+    with pytest.raises(ValueError):
+        evaluate_canary(1.01)
+
