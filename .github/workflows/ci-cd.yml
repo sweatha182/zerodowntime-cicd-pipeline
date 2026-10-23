@@ -189,21 +189,52 @@ jobs:
           python-version: "3.11"
 
       - name: Run Compliance Gate
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          SECRET_SCAN_RESULT: ${{ needs.secret-scan.result }}
+          SAST_RESULT: ${{ needs.sast.result }}
+          DEPENDENCY_SCAN_RESULT: ${{ needs.dependency-scan.result }}
+          DOCKER_RESULT: ${{ needs.docker-build.result }}
+          DAST_RESULT: ${{ needs.dast.result }}
         run: |
           python - <<'PY'
+          import os
           from compliance_gate import evaluate_compliance
 
+          test_passed = os.environ["TEST_RESULT"] == "success"
+          secret_scan_passed = os.environ["SECRET_SCAN_RESULT"] == "success"
+          sast_passed = os.environ["SAST_RESULT"] == "success"
+          dependency_scan_passed = os.environ["DEPENDENCY_SCAN_RESULT"] == "success"
+          docker_passed = os.environ["DOCKER_RESULT"] == "success"
+          dast_passed = os.environ["DAST_RESULT"] == "success"
+
           result = evaluate_compliance(
-              sast_passed=True,
-              dependency_scan_passed=True,
-              approval_present=True,
-              tests_passed=True,
+              sast_passed=sast_passed,
+              dependency_scan_passed=dependency_scan_passed,
+              approval_present=False,
+              tests_passed=test_passed,
           )
 
-          print(result)
+          failed_checks = list(result["failed_checks"])
 
-          if not result["release_approved"]:
-              print("Release blocked:", result["failed_checks"])
+          if not secret_scan_passed:
+              failed_checks.append("secret_scan")
+
+          if not docker_passed:
+              failed_checks.append("docker_build_and_scan")
+
+          if not dast_passed:
+              failed_checks.append("dast")
+
+          release_approved = len(failed_checks) == 0
+
+          print({
+              "release_approved": release_approved,
+              "failed_checks": failed_checks,
+          })
+
+          if not release_approved:
+              print("Release blocked:", failed_checks)
               raise SystemExit(1)
           PY
 
