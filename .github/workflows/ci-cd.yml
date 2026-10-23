@@ -167,3 +167,43 @@ jobs:
       - name: Stop Application
         if: always()
         run: docker rm -f novapay-dast || true
+
+  compliance:
+    name: Release Compliance Gate
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - secret-scan
+      - sast
+      - dependency-scan
+      - docker-build
+      - dast
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Compliance Gate
+        run: |
+          python - <<'PY'
+          from compliance_gate import evaluate_compliance
+
+          result = evaluate_compliance(
+              sast_passed=True,
+              dependency_scan_passed=True,
+              approval_present=False,
+              tests_passed=True,
+          )
+
+          print(result)
+
+          if not result["release_approved"]:
+              print("Release blocked:", result["failed_checks"])
+              raise SystemExit(1)
+          PY
+
