@@ -30,6 +30,6 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = HTTPServer(("127.0.0.1", 8000), HealthHandler)
+    server = HTTPServer(("0.0.0.0", 8000), HealthHandler)
     print("NovaPay health endpoint running on port 8000")
     server.serve_forever()
