@@ -37,4 +37,3 @@ def test_blue_green_keeps_old_version_on_failure():
 
 assert result["active_version"] == "blue"
 assert result["traffic_switched"] is False
-```
