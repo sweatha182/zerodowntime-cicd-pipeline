@@ -70,3 +70,31 @@ def test_canary_rejects_error_rate_above_one():
     with pytest.raises(ValueError):
         evaluate_canary(1.01)
 
+from deployment import verify_deployment
+import pytest
+
+
+def test_deployment_succeeds_when_healthy():
+    result = verify_deployment("healthy")
+
+    assert result["deployment"] == "successful"
+    assert result["rollback_required"] is False
+
+
+def test_deployment_fails_when_unhealthy():
+    result = verify_deployment("unhealthy")
+
+    assert result["deployment"] == "failed"
+    assert result["rollback_required"] is True
+
+
+def test_deployment_rejects_unknown_health_status():
+    with pytest.raises(ValueError):
+        verify_deployment("unknown")
+
+
+def test_deployment_rejects_non_string_health_status():
+    with pytest.raises(TypeError):
+        verify_deployment(None)
+
+
